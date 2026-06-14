@@ -34,7 +34,12 @@ class ChatApiClient(
         .writeTimeout(30, TimeUnit.SECONDS)
         .build()
 
-    /** Stream chat completion tokens as a Flow of content deltas. */
+    /**
+     * Stream chat completion tokens as a Flow.
+     * Emits individual content tokens. After the stream completes,
+     * emits "[[DONE]]" so the ViewModel knows to stop streaming.
+     * On error, emits "[ERROR] ...".
+     */
     fun streamChatCompletion(
         modelId: String,
         messages: List<ChatMessagePayload>,
@@ -65,21 +70,61 @@ class ChatApiClient(
             val response = client.newCall(request).execute()
             if (!response.isSuccessful) {
                 val errorBody = response.body?.string() ?: "Unknown error"
-                emit("[ERROR] HTTP ${response.code}: ${errorBody.take(500)}")
+                // Try to parse a meaningful error from response
+                val msg = try {
+                    val errJson = json.parseToJsonElement(errorBody).jsonObject
+                    errJson["error"]?.jsonObject?.get("message")?.jsonPrimitive?.content
+                        ?: "HTTP ${response.code}"
+                } catch (_: Exception) {
+                    "HTTP ${response.code}: ${errorBody.take(200)}"
+                }
+                emit("[ERROR] $msg")
                 return@flow
             }
 
+            // Check if response is actually SSE or just JSON (non-streaming fallback)
+            val contentType = response.header("Content-Type", "") ?: ""
+            if (!contentType.contains("text/event-stream", ignoreCase = true)) {
+                // Non-streaming response — parse as JSON directly
+                val bodyStr = response.body?.string()
+                if (bodyStr != null) {
+                    try {
+                        val parsed = json.decodeFromString(
+                            ChatCompletionResponse.serializer(),
+                            bodyStr,
+                        )
+                        val content = parsed.choices.firstOrNull()?.message?.content
+                        if (!content.isNullOrBlank()) {
+                            emit(content)
+                        } else {
+                            emit("[ERROR] Empty response from model")
+                        }
+                    } catch (e: Exception) {
+                        emit("[ERROR] Failed to parse response: ${e.message}")
+                    }
+                } else {
+                    emit("[ERROR] Empty response body")
+                }
+                emit("[[DONE]]")
+                return@flow
+            }
+
+            // SSE streaming
             val reader = response.body?.byteStream()?.bufferedReader()
                 ?: run {
                     emit("[ERROR] Empty response body")
+                    emit("[[DONE]]")
                     return@flow
                 }
 
+            var hasContent = false
             reader.use { r ->
                 var line: String?
                 while (r.readLine().also { line = it } != null) {
                     val currentLine = line ?: continue
                     if (currentLine.isBlank()) continue
+
+                    // Handle both "data: [DONE]" and "data: [DONE]" variants
                     if (currentLine.startsWith("data: [DONE]")) break
                     if (!currentLine.startsWith("data:")) continue
 
@@ -87,26 +132,52 @@ class ChatApiClient(
                     if (jsonStr.isBlank() || jsonStr == "[DONE]") continue
 
                     try {
+                        // Try parsing as ChatCompletionChunk first (preferred)
                         val chunk = json.decodeFromString(
                             ChatCompletionChunk.serializer(),
                             jsonStr,
                         )
-                        val content = chunk.choices.firstOrNull()?.delta?.content
-                        if (!content.isNullOrEmpty()) {
-                            emit(content)
+                        val choice = chunk.choices.firstOrNull()
+                        if (choice != null) {
+                            // Check for finish_reason — stream is done
+                            if (choice.finish_reason != null && !choice.finish_reason.isNullOrEmpty()) {
+                                // Emit any remaining content then break
+                                val content = choice.delta?.content
+                                if (!content.isNullOrEmpty()) {
+                                    hasContent = true
+                                    emit(content)
+                                }
+                                break
+                            }
+
+                            val content = choice.delta?.content
+                            if (!content.isNullOrEmpty()) {
+                                hasContent = true
+                                emit(content)
+                            } else if (choice.delta?.role == "assistant") {
+                                // Role-only delta, skip it
+                            }
                         }
                     } catch (e: Exception) {
                         Log.w(TAG, "Failed to parse SSE chunk: $jsonStr", e)
                     }
                 }
             }
+
+            // If no content was emitted at all, the model may have returned without output
+            if (!hasContent) {
+                Log.w(TAG, "Stream completed with no content for model=$modelId")
+            }
+
+            emit("[[DONE]]")
         } catch (e: Exception) {
             Log.e(TAG, "Stream request failed", e)
             emit("[ERROR] ${e.message ?: "Network error"}")
+            emit("[[DONE]]")
         }
     }.flowOn(Dispatchers.IO)
 
-    /** Non-streaming chat completion — returns the full message at once. */
+    /** Non-streaming chat completion — returns the full message at once (fallback). */
     suspend fun chatCompletion(
         modelId: String,
         messages: List<ChatMessagePayload>,

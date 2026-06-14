@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.nebulaai.app.data.*
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -39,6 +40,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { keyStore.setSelectedModel(modelId) }
     }
 
+    private var currentStreamingJob: kotlinx.coroutines.Job? = null
+
     fun sendMessage(text: String) {
         if (text.isBlank() || _isStreaming.value) return
 
@@ -59,7 +62,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         _messages.update { it + userMsg + assistantMsg }
         _isStreaming.value = true
 
-        viewModelScope.launch {
+        currentStreamingJob = viewModelScope.launch {
             val apiKey = _currentChatKey.value
             if (apiKey.isBlank()) {
                 _messages.update { msgs ->
@@ -73,6 +76,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
                 _isStreaming.value = false
+                currentStreamingJob = null
                 return@launch
             }
 
@@ -95,37 +99,68 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     modelId = selectedModel.value,
                     messages = payloads,
                 ).collect { token ->
-                    if (token.startsWith("[ERROR]")) {
+                    when {
+                        token == "[[DONE]]" -> {
+                            // Stream completed normally — stop collecting
+                            _messages.update { msgs ->
+                                msgs.map { msg ->
+                                    if (msg.id == assistantId) msg.copy(isStreaming = false)
+                                    else msg
+                                }
+                            }
+                            _isStreaming.value = false
+                        }
+                        token.startsWith("[ERROR]") -> {
+                            val errMsg = token.removePrefix("[ERROR] ").removePrefix("[ERROR]")
+                            _messages.update { msgs ->
+                                msgs.map { msg ->
+                                    if (msg.id == assistantId) msg.copy(
+                                        content = errMsg,
+                                        isStreaming = false,
+                                        isError = true,
+                                    )
+                                    else msg
+                                }
+                            }
+                            _isStreaming.value = false
+                        }
+                        else -> {
+                            _messages.update { msgs ->
+                                msgs.map { msg ->
+                                    if (msg.id == assistantId && msg.isStreaming) {
+                                        msg.copy(content = msg.content + token)
+                                    } else msg
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // If streaming is still true, mark complete (safety net)
+                if (_isStreaming.value) {
+                    val currentContent = _messages.value.find { it.id == assistantId }?.content
+                    if (currentContent.isNullOrBlank()) {
+                        // No content was produced — try non-streaming fallback
                         _messages.update { msgs ->
                             msgs.map { msg ->
                                 if (msg.id == assistantId) msg.copy(
-                                    content = token.removePrefix("[ERROR] ").removePrefix("[ERROR]"),
+                                    content = "The model returned an empty response. Try again or switch models.",
                                     isStreaming = false,
                                     isError = true,
                                 )
                                 else msg
                             }
                         }
-                        _isStreaming.value = false
                     } else {
                         _messages.update { msgs ->
                             msgs.map { msg ->
-                                if (msg.id == assistantId && msg.isStreaming) {
-                                    msg.copy(content = msg.content + token)
-                                } else msg
+                                if (msg.id == assistantId) msg.copy(isStreaming = false)
+                                else msg
                             }
                         }
                     }
+                    _isStreaming.value = false
                 }
-
-                // Mark streaming complete
-                _messages.update { msgs ->
-                    msgs.map { msg ->
-                        if (msg.id == assistantId) msg.copy(isStreaming = false)
-                        else msg
-                    }
-                }
-                _isStreaming.value = false
             } catch (e: Exception) {
                 _messages.update { msgs ->
                     msgs.map { msg ->
@@ -138,6 +173,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
                 _isStreaming.value = false
+            } finally {
+                currentStreamingJob = null
             }
         }
     }
@@ -151,7 +188,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun stopStreaming() {
-        // TODO: Cancel the ongoing coroutine for a proper stop
+        currentStreamingJob?.cancel()
+        currentStreamingJob = null
         _isStreaming.value = false
         _messages.update { msgs ->
             msgs.map { msg ->
