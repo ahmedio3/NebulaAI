@@ -142,7 +142,7 @@ fun ChatScreen(vm: ChatViewModel = viewModel()) {
             }
 
             // Typing indicator
-            if (isStreaming && messages.lastOrNull()?.isStreaming == true && messages.lastOrNull()?.content.isBlank() == true) {
+            if (isStreaming && messages.lastOrNull()?.isStreaming == true && messages.lastOrNull()?.content?.isBlank() == true) {
                 item {
                     Row(
                         modifier = Modifier.padding(12.dp),
