@@ -18,9 +18,11 @@ import kotlinx.serialization.json.jsonArray
  */
 class KeyStore(private val context: Context) {
 
-    private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(
-        name = "nebula_prefs"
-    )
+    companion object {
+        private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(
+            name = "nebula_prefs"
+        )
+    }
 
     // --- Keys ---
     private val chatKeyPref = stringPreferencesKey("chatkey")
