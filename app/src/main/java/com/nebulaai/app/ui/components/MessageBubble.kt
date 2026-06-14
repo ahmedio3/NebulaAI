@@ -17,7 +17,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ContentCopy
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.SmartToy
@@ -194,7 +194,7 @@ private fun CopyButton(text: String) {
             exit = fadeOut(),
         ) {
             Icon(
-                imageVector = Icons.AutoMirrored.Filled.ContentCopy,
+                imageVector = Icons.Default.ContentCopy,
                 contentDescription = "Copy",
                 tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
                 modifier = Modifier.size(16.dp),

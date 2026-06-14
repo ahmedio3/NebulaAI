@@ -20,7 +20,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.AddComment
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Card
@@ -38,6 +38,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -58,9 +59,9 @@ import com.nebulaai.app.ui.components.ModelSelector
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatScreen(vm: ChatViewModel = viewModel()) {
-    val messages by vm.messages
-    val isStreaming by vm.isStreaming
-    val selectedModel by vm.selectedModel
+    val messages by vm.messages.collectAsState()
+    val isStreaming by vm.isStreaming.collectAsState()
+    val selectedModel by vm.selectedModel.collectAsState()
     var inputText by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -232,9 +233,9 @@ fun ChatScreen(vm: ChatViewModel = viewModel()) {
                         },
                         enabled = inputText.isNotBlank(),
                     ) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.Send,
-                            contentDescription = "Send",
+                    Icon(
+                        Icons.Default.Send,
+                        contentDescription = "Send",
                             tint = if (inputText.isNotBlank())
                                 MaterialTheme.colorScheme.primary
                             else

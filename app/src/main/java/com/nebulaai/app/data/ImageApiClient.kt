@@ -4,6 +4,7 @@ import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -53,11 +54,11 @@ class ImageApiClient(
     ): Result<GeneratedImage> = withContext(Dispatchers.IO) {
         try {
             val jsonBuilder = kotlinx.serialization.json.buildJsonObject {
-                put("prompt", prompt)
+                put("prompt", kotlinx.serialization.json.JsonPrimitive(prompt))
                 if (negativePrompt.isNotBlank()) {
-                    put("negative_prompt", negativePrompt)
+                    put("negative_prompt", kotlinx.serialization.json.JsonPrimitive(negativePrompt))
                 }
-                put("aspect_ratio", aspectRatio)
+                put("aspect_ratio", kotlinx.serialization.json.JsonPrimitive(aspectRatio))
             }
 
             val body = jsonBuilder.toString().toRequestBody(JSON_MEDIA_TYPE)

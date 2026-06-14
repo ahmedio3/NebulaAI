@@ -45,6 +45,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -66,9 +67,9 @@ private val ASPECT_RATIOS = listOf("1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun ImageGenScreen(vm: ImageGenViewModel = viewModel()) {
-    val isGenerating by vm.isGenerating
-    val images by vm.generatedImages
-    val error by vm.error
+    val isGenerating by vm.isGenerating.collectAsState()
+    val images by vm.generatedImages.collectAsState()
+    val error by vm.error.collectAsState()
 
     var prompt by remember { mutableStateOf("") }
     var negativePrompt by remember { mutableStateOf("") }
